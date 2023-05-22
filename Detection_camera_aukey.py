@@ -2,79 +2,120 @@ import torch
 import numpy as np
 import cv2
 from PIL import Image
-import os 
-
-os.chdir("yolov5")
+import requests
 
 
-#chargement du modele :
-model2 = torch.hub.load('ultralytics/yolov5', 'custom',path='runs/train/exp7/weights/last.pt') 
 
-# On considère qu'il y a 6 servo-moteurs pour les éjections
+'''
+#########   ROS ########
+import rospy
+from std_msgs.msg import UInt8
+import time
+
+def init_high_level_node():
+    rospy.init_node('high_level_publisher', anonymous=True)
+
+def publish_cmd_led(value, duration):
+    pub = rospy.Publisher('cmd_led', UInt8, queue_size=10)
+    rate = rospy.Rate(100)  # 10 Hz
+    end_time = time.time() + duration  # Calculate end time
+
+    while not rospy.is_shutdown() and time.time() < end_time:
+        cmd = UInt8()
+        cmd.data = value
+
+        pub.publish(cmd)
+        rate.sleep()
+#########   ROS ########
+
+init_high_level_node()
+
+'''
+
+def binary_to_decimal(vector):
+    binary_str = ''.join(str(int(bit)) for bit in vector)
+    decimal = int(binary_str, 2)
+    return decimal
+
+
+# Chargement du modèle
+##device 0
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/runs/train/exp7/weights/last.pt', device='cpu')
+
+# Paramètres pour la capture vidéo
+camera_id = 1
+capture_width = 1280
+capture_height = 720
+capture_fps = 30
+
+# Paramètres pour le calibrage de la caméra
+left_crop = 33
+right_crop = 155
+center_image = 4
+
+# Initialisation de la capture vidéo
+cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, capture_width)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, capture_height)
+cap.set(cv2.CAP_PROP_FPS, capture_fps)
+
 nb_eje = 6
 vector = np.zeros(nb_eje)
 
-cap = cv2.VideoCapture(2)
-
-
-
-###                                          CALIBRAGE CAMERA AUKEY
-
-Enlever_sur_cote_gauche= 33
-Enlever_sur_cote_droit= 155
-Centrer_image= 4    # Coupe l'image en longueur 
-
-###                                           FIN CALIBRAGE
-count=0
+count = 0
 while True:
-    vector = np.zeros(nb_eje)
+    vector.fill(0)
     ret, frame = cap.read()
     
-    # Supprimer 213 pixels en largeur à gauche et à droite
-    width = frame.shape[1]    
-    frame = frame[:, Enlever_sur_cote_gauche:width-Enlever_sur_cote_droit, :]
+    # Prétraitement de l'image
+    frame = frame[:, left_crop:capture_width - right_crop, :]
+    frame = frame[int(frame.shape[0] / center_image):, :]
     
-    # Couper la partie supérieure de l'image
-    height = frame.shape[0]
-    frame = frame[int(height/Centrer_image):, :]
-       
-   
-    
-    # Tracer des droites verticales
-  
-    for i in range(1, nb_eje):
-        x = int((frame.shape[1]  / 6)*i)
-        cv2.line(frame, (x, 0), (x, frame.shape[0]), (0, 255, 0), 2)
-        
-    
-    # Convertir le frame capturé en une image PIL
+    # Conversion du frame en une image PIL
     image = Image.fromarray(frame)
     
-    # Effectuer la détection d'objet
-    results = model2(image)
+    # Détection d'objets avec le modèle YOLOv5
+    results = model(image)
     
-    for detection in results.pandas().xyxy[0].iterrows():
-        index, data = detection
-        class_name = model2.names[int(data[5])]
+    # Analyse des résultats de détection
+    detections = results.pandas().xyxy[0]
+    for _, data in detections.iterrows():
+        class_name = model.names[int(data[5])]
         
-        # Ajuster les coordonnées en fonction du redimensionnement de l'image
-        x = (data[0] + data[2]) / 2
-        y = (data[1] + data[3]) / 2
-        #print("Objet détecté : classe={}, position=({}, {})".format(class_name, x, y))
+        # Calcul des coordonnées ajustées en fonction du redimensionnement de l'image
+        x1, y1, x2, y2 = int(data[0]), int(data[1]), int(data[2]), int(data[3])
         
-        # Remplissage du vecteur :
-        if class_name == 'Fresh':
-            for i in range(nb_eje):
-                if (frame.shape[1] / nb_eje) * i < x < (frame.shape[1] / nb_eje) * (i+1):
-                    vector[i] = 1
-                elif (frame.shape[1] / nb_eje) * i < data[0] < (frame.shape[1] / nb_eje) * (i+1):
-                    vector[i] = 1
-                elif (frame.shape[1] / nb_eje) * i < data[2] < (frame.shape[1] / nb_eje) * (i+1):
-                    vector[i] = 1
-    count +=1
-    print(count," ",vector)
+        # Remplissage du vecteur
+        for i in range(nb_eje):
+            if (frame.shape[1] / nb_eje) * i < x1  < (frame.shape[1] / nb_eje) * (i + 1):
+                vector[i] = 1 if class_name == 'Fresh' else vector[i]
+            elif (frame.shape[1] / nb_eje) * i < x2  < (frame.shape[1] / nb_eje) * (i + 1):
+                vector[i] = 1 if class_name == 'Fresh' else vector[i]
+            elif (frame.shape[1] / nb_eje) * i < (x1 +x2)/2  < (frame.shape[1] / nb_eje) * (i + 1):
+                vector[i] = 1 if class_name == 'Fresh' else vector[i]
+        
+        # Dessin du contour de l'objet détecté
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        
+        # Affichage du nom de l'objet détecté
+        label = f'{class_name}'
+        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
     
-    cv2.imshow('YOLO', np.squeeze(results.render()))
+    count += 1
+
+    
+    variable_PU=binary_to_decimal(vector)
+   # publish_cmd_led(variable_PU, 0.1)  # Set the value and duration here (0-255, seconds)
+
+    print(count, vector,variable_PU)      
+    
+    # Tracer des droites vertes
+    for i in range(1, nb_eje):
+        x = int((frame.shape[1] / nb_eje) * i)
+        cv2.line(frame, (x, 0), (x, frame.shape[0]), (0, 255, 0), 2)
+    
+    # Affichage de l'image avec les résultats de détection
+    cv2.imshow('YOLO', frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break

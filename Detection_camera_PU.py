@@ -88,11 +88,11 @@ while True:
         # Remplissage du vecteur
         for i in range(nb_eje):
             if (frame.shape[1] / nb_eje) * i < x1  < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else 2
+                vector[i] = 1 if class_name == 'Fresh' else vector[i]
             elif (frame.shape[1] / nb_eje) * i < x2  < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else 2
+                vector[i] = 1 if class_name == 'Fresh' else vector[i]
             elif (frame.shape[1] / nb_eje) * i < (x1 +x2)/2  < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else 2
+                vector[i] = 1 if class_name == 'Fresh' else vector[i]
         
         # Dessin du contour de l'objet détecté
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
