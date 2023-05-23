@@ -40,7 +40,7 @@ def binary_to_decimal(vector):
 
 # Chargement du modèle
 ##device 0
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/runs/train/exp7/weights/last.pt', device='cpu')
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/runs/train/modele_boitenoire/weights/last.pt', device='cpu')
 
 # Paramètres pour la capture vidéo
 camera_id = 2
