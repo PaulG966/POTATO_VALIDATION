@@ -42,22 +42,13 @@ def binary_to_decimal(vector):
 ##device 0
 model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/runs/train/modele_boitenoire/weights/last.pt', device='cpu')
 
-# Paramètres pour la capture vidéo
-camera_id = 2
-capture_width = 1280
-capture_height = 720
-capture_fps = 30
-
 # Paramètres pour le calibrage de la caméra
-left_crop =0
-right_crop = 180
-center_image=1
+left_crop = 200
+right_crop = 150
+#center_image = 2
 
-# Initialisation de la capture vidéo
+camera_id = 2
 cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, capture_width)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, capture_height)
-cap.set(cv2.CAP_PROP_FPS, capture_fps)
 
 nb_eje = 6
 vector = np.zeros(nb_eje)
@@ -68,8 +59,8 @@ while True:
     ret, frame = cap.read()
     
     # Prétraitement de l'image
-    frame = frame[:, left_crop:capture_width - right_crop, :]
-    frame = frame[int(frame.shape[0] / center_image):, :]
+    frame = frame[:, left_crop:frame.shape[1] - right_crop, :]
+    #frame = frame[int(frame.shape[0] / center_image):, :]
     
     # Conversion du frame en une image PIL
     image = Image.fromarray(frame)
@@ -88,11 +79,11 @@ while True:
         # Remplissage du vecteur
         for i in range(nb_eje):
             if (frame.shape[1] / nb_eje) * i < x1  < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else vector[i]
+                vector[i] = 1 if class_name == 'Rotten' else vector[i]
             elif (frame.shape[1] / nb_eje) * i < x2  < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else vector[i]
+                vector[i] = 1 if class_name == 'Rotten' else vector[i]
             elif (frame.shape[1] / nb_eje) * i < (x1 +x2)/2  < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else vector[i]
+                vector[i] = 1 if class_name == 'Rotten' else vector[i]
         
         # Dessin du contour de l'objet détecté
         cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
