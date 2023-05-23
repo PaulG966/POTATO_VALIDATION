@@ -43,15 +43,15 @@ def binary_to_decimal(vector):
 model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/runs/train/exp7/weights/last.pt', device='cpu')
 
 # Paramètres pour la capture vidéo
-camera_id = 0
+camera_id = 2
 capture_width = 1280
 capture_height = 720
 capture_fps = 30
 
 # Paramètres pour le calibrage de la caméra
-left_crop = 260
-right_crop = 300
-center_image = 4
+left_crop =0
+right_crop = 180
+center_image=1
 
 # Initialisation de la capture vidéo
 cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)

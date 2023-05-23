@@ -1,69 +1,50 @@
-import torch
-import numpy as np
 import cv2
-from PIL import Image
-import requests
 
-def binary_to_decimal(vector):
-    binary_str = ''.join(str(int(bit)) for bit in vector)
-    decimal = int(binary_str, 2)
-    return decimal
+# Paramètres pour la capture vidéo
+camera_id = 2
+capture_width = 1280
+capture_height = 720
+capture_fps = 30
 
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/runs/train/exp7/weights/last.pt', device='cpu')
+# Paramètres pour le calibrage de la caméra
+left_crop = 0
+right_crop = 180
+center_image = 1
 
-camera_id = 1
+# Initialisation de la capture vidéo
+cap = cv2.VideoCapture(camera_id, cv2.CAP_DSHOW)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, capture_width)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, capture_height)
+cap.set(cv2.CAP_PROP_FPS, capture_fps)
 
-cap = cv2.VideoCapture(camera_id)
-
+# Vérification si la capture vidéo est ouverte correctement
 if not cap.isOpened():
-    print("Erreur lors de l'ouverture de la caméra")
+    print("Impossible d'ouvrir la caméra")
     exit()
 
-nb_eje = 6
-vector = np.zeros(nb_eje)
-
-count = 0
-
+# Boucle de capture d'images
 while True:
-    vector.fill(0)
+    # Lecture de l'image de la caméra
     ret, frame = cap.read()
 
-    image = Image.fromarray(frame)
+    # Vérification si la lecture de l'image est réussie
+    if not ret:
+        print("Échec de la lecture de l'image")
+        break
 
-    results = model(image)
+    # Prétraitement de l'image (calibrage de la caméra)
+    frame = frame[:, left_crop:capture_width - right_crop, :]
+    frame = frame[int(frame.shape[0] / center_image):, :]
 
-    detections = results.pandas().xyxy[0]
-    for _, data in detections.iterrows():
-        class_name = model.names[int(data[5])]
+    # Vérification de la taille de l'image
+    if frame.shape[0] > 0 and frame.shape[1] > 0:
+        # Affichage de l'image
+        cv2.imshow('Caméra', frame)
 
-        x1, y1, x2, y2 = int(data[0]), int(data[1]), int(data[2]), int(data[3])
-
-        for i in range(nb_eje):
-            if (frame.shape[1] / nb_eje) * i < x1 < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else vector[i]
-            elif (frame.shape[1] / nb_eje) * i < x2 < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else vector[i]
-            elif (frame.shape[1] / nb_eje) * i < (x1 + x2) / 2 < (frame.shape[1] / nb_eje) * (i + 1):
-                vector[i] = 1 if class_name == 'Fresh' else vector[i]
-
-        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-        label = f'{class_name}'
-        cv2.putText(frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
-
-    count += 1
-
-    variable_PU = binary_to_decimal(vector)
-    print("n°",count, variable_PU)
-
-    for i in range(1, nb_eje):
-        x = int((frame.shape[1] / nb_eje) * i)
-        cv2.line(frame, (x, 0), (x, frame.shape[0]), (0, 255, 0), 2)
-
-    cv2.imshow('YOLO', frame)
-
+    # Attendre l'appui sur la touche 'q' pour quitter
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+# Libération des ressources
 cap.release()
 cv2.destroyAllWindows()
