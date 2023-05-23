@@ -54,7 +54,7 @@ while True:
     count += 1
 
     variable_PU = binary_to_decimal(vector)
-    print(count, vector, variable_PU)
+    print("n°",count, variable_PU)
 
     for i in range(1, nb_eje):
         x = int((frame.shape[1] / nb_eje) * i)
