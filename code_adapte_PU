@@ -2,10 +2,7 @@ import torch
 import cv2
 from PIL import Image
 import numpy as np
-import rospy
-from std_msgs.msg import Float32MultiArray
-from std_msgs.msg import Int32MultiArray
-from std_msgs.msg import Int32
+
 import time
 
 NB_SERVO = 6
@@ -15,7 +12,7 @@ RIGHT_CROP = 150
 TOP_CROP= 30
 BOTTOM_CROP=170
 
-CAMERA_ID = 2
+CAMERA_ID = 1
 CAPTURE_FREQUENCY = 10
 
 LABEL_NAMES = ["dirt", "rooten"]
@@ -49,8 +46,37 @@ class Detection:
             return None
 
         df = results.pandas().xyxy[0]
-
         return df
+    
+  
+    def cropped(self, df, frame):
+        
+        if df.empty:
+            print("Le DataFrame df est vide.")
+            return None
+        
+        for i in range(len(df)):
+            x1 = int(df.loc[i, 'xmin'])
+            y1 = int(df.loc[i, 'ymin'])
+            x2 = int(df.loc[i, 'xmax'])
+            y2 = int(df.loc[i, 'ymax'])
+
+            # Découper l'image
+            cropped_image = frame[y1:y2, x1:x2]
+            cv2.imshow("Image recadrée", cropped_image)
+            cv2.waitKey(0)  # Attendre indéfiniment jusqu'à ce qu'une touche soit pressée
+            
+            # Vérifier si l'image recadrée est vide
+            if cropped_image.size == 0:
+                raise Exception("L'image recadrée est vide.")
+            
+            print("Ça marche pour la position", i + 1)
+        
+        return cropped_image
+    
+    def SVM(cropped_image):
+        None
+
 
 
 class Camera:
@@ -141,7 +167,8 @@ def main():
 
 
             ###
-            df = detection.detect(frame)
+            df = detection.detect(frame)            
+            cropped_image=detection.cropped(df,frame)            
             matrix = df.iloc[:, [0, 1, 2, 3, 5]].values
             print(matrix)
             ###
