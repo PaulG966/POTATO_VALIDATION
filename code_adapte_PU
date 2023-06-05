@@ -1,0 +1,162 @@
+import torch
+import cv2
+from PIL import Image
+import numpy as np
+import rospy
+from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Int32MultiArray
+from std_msgs.msg import Int32
+import time
+
+NB_SERVO = 6
+
+LEFT_CROP = 220
+RIGHT_CROP = 150
+TOP_CROP= 30
+BOTTOM_CROP=170
+
+CAMERA_ID = 2
+CAPTURE_FREQUENCY = 10
+
+LABEL_NAMES = ["dirt", "rooten"]
+DISPLAY_SIZE_FACTOR= 2
+
+
+class Detection:
+    def __init__(self):
+        try:
+            self.model = torch.hub.load(
+                'ultralytics/yolov5', 'custom',
+                path='yolov5/runs/train/modele_boitenoire/weights/last.pt',
+                device='cpu'
+            )
+            global LABEL_NAMES
+            LABEL_NAMES= self.model.names
+            print(f"Nom des labels: {LABEL_NAMES}")
+        except Exception as e:
+            print("Erreur lors du chargement du modèle YOLOv5 :")
+            print(e)
+            exit(1)
+
+    def detect(self, frame):
+        image = Image.fromarray(frame)
+
+        try:
+            results = self.model(image)
+        except Exception as e:
+            print("Erreur lors de la détection d'objets avec YOLOv5 :")
+            print(e)
+            return None
+
+        df = results.pandas().xyxy[0]
+
+        return df
+
+
+class Camera:
+    def __init__(self, camera_id):
+        self.cap = cv2.VideoCapture(camera_id)
+        if not self.cap.isOpened():
+            print("Erreur lors de la lecture de la caméra.")
+            exit(1)
+       
+        # Récupérer la taille de la caméra
+        self.width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)) - LEFT_CROP- RIGHT_CROP
+        self.height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) - BOTTOM_CROP - TOP_CROP
+        print(f"Taille de la caméra : {self.width}x{self.height}")
+
+    def get_image(self):
+        ret, frame = self.cap.read()
+        if not ret:
+            print("Erreur lors de la lecture de l'image de la caméra.")
+            exit(1)
+        frame = frame[TOP_CROP:frame.shape[0] - BOTTOM_CROP, LEFT_CROP:frame.shape[1] - RIGHT_CROP, :]
+        return frame
+
+    def release(self):
+        self.cap.release()
+
+
+class Display:
+    def __init__(self):
+        self.frame = None
+
+    def draw_lines(self):
+        for i in range(1, NB_SERVO):
+            x = int((self.frame.shape[1] / NB_SERVO) * i)
+            cv2.line(self.frame, (x, 0), (x, self.frame.shape[0]), (0, 255, 0), 2)
+
+    def draw_objects(self, df):
+        for _, data in df.iterrows():
+            x1, y1, x2, y2, confidence, label_id = (
+                int(data[0])*DISPLAY_SIZE_FACTOR, int(data[1])*DISPLAY_SIZE_FACTOR, int(data[2])*DISPLAY_SIZE_FACTOR, int(data[3])*DISPLAY_SIZE_FACTOR, float(data[4]), int(data[5])
+            )
+            label_name = LABEL_NAMES[label_id]
+
+            cv2.rectangle(self.frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            label = f"{label_name}: {confidence:.2f}"
+            cv2.putText(
+                self.frame, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2
+            )
+
+    def show_frame(self, fps):
+        cv2.putText(self.frame, f"FPS: {fps:.2f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 0, 255), 2)
+        cv2.imshow('YOLO', self.frame)
+
+    def set_frame(self, frame):
+        self.frame= cv2.resize(frame, (frame.shape[0]*DISPLAY_SIZE_FACTOR, frame.shape[1]*DISPLAY_SIZE_FACTOR))
+
+    def do(self, frame, df, fps):
+        self.set_frame(frame)
+        self.draw_lines()
+        self.draw_objects(df)
+        self.show_frame(fps)
+
+
+def calculate_fps(delta_time, fps_history):
+    fps = 1.0 / delta_time
+    fps_history.append(fps)
+    if len(fps_history) > 30:
+        fps_history = fps_history[1:]
+    fps_mean= np.mean(fps_history)
+    return fps_mean, fps_history
+
+
+def main():
+    ###
+    detection = Detection()
+    ###
+    camera = Camera(CAMERA_ID)
+    display = Display()
+
+    prev_time = time.time()
+    fps_history = []
+
+    while True:
+        current_time = time.time()
+        delta_time = current_time - prev_time
+
+        if delta_time >= 1.0 / CAPTURE_FREQUENCY:
+            frame = camera.get_image()
+
+
+            ###
+            df = detection.detect(frame)
+            matrix = df.iloc[:, [0, 1, 2, 3, 5]].values
+            print(matrix)
+            ###
+
+            fps, fps_history = calculate_fps(delta_time, fps_history)
+            display.do(frame, df, fps)
+
+            prev_time = current_time
+
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    camera.release()
+    cv2.destroyAllWindows()
+
+
+if __name__ == '__main__':
+    main()
